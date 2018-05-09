@@ -111,6 +111,14 @@ namespace Nulah.Roomba {
             /*
                 # this is 0xf0 (mqtt reserved) 0x05(data length)
                 # 0xefcc3b2900 (data)
+                [0]	240	byte // mqtt           0xf0
+                [1]	5	byte // message length 0x05
+                [2]	239	byte // message        0xef
+                [3]	204	byte // message        0xcc
+                [4]	59	byte // message        0x3b
+                [5]	41	byte // message        0x29
+                [6]	0	byte // message        0x00 - Based on errors returned, this seems like its a response flag, where 0x00 is OK, and 0x03 is ERROR? not sure
+                                                      but details might be found in documentation for mqtt
              */
             byte[] messsage = { 0xf0, 0x05, 0xef, 0xcc, 0x3b, 0x29, 0x00 };
             sslStream.Write(messsage);
@@ -128,7 +136,12 @@ namespace Nulah.Roomba {
             int bytes = -1;
 
             while(( bytes = sslStream.Read(buffer, 0, buffer.Length) ) > 0) {
-                // First message from the vacuum is [ 240 (0xf0 - mqtt reserved), 35 (message to follow length) ]
+                // First message from the vacuum the length of the password
+                /*
+                    [0]	240	byte // mqtt           0xf0
+                    [1]	35	byte // message length 0x35
+                    the message length includes the original 5 bytes we sent to it.
+                 */
                 if(bytes == 2) {
                     continue;
                 } else if(bytes > 7) {
@@ -144,6 +157,15 @@ namespace Nulah.Roomba {
                     resString = Encoding.UTF8.GetString(finalBuffer);
                     break;
                 } else {
+                    // Here the response will be the first 4 bytes of the message we sent,
+                    // followed by 0x03 to indicate an error? Not too sure on that
+                    /*
+                        [2]	239	byte // message        0xef
+                        [3]	204	byte // message        0xcc
+                        [4]	59	byte // message        0x3b
+                        [5]	41	byte // message        0x29
+		                [4]	3	byte // error byte?    0x03  - not sure how this maps yet
+                     */
                     throw new Exception("Failed to retrieve password. Did you hold the home button until it beeped?");
                 }
             }
