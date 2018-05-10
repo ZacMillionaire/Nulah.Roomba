@@ -14,7 +14,7 @@ namespace Nulah.Roomba.Models {
         public string proto { get; set; }
         public Cap cap { get; set; }
     }
-
+    /*
     public class Cap {
         public int pose { get; set; }
         public int ota { get; set; }
@@ -28,5 +28,5 @@ namespace Nulah.Roomba.Models {
         public int eco { get; set; }
         public int svcConf { get; set; }
     }
-
+    */
 }

@@ -1,6 +1,10 @@
-﻿using Newtonsoft.Json;
+﻿using MQTTnet;
+using MQTTnet.Client;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Nulah.Roomba.Models;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Security;
@@ -8,6 +12,7 @@ using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace Nulah.Roomba {
     // Most of this code is roughly ported from GetRoombaPassword in https://github.com/koalazak/dorita980
@@ -62,6 +67,139 @@ namespace Nulah.Roomba {
             var deserialized = JsonConvert.DeserializeObject<T>(resString);
             return deserialized;
         }
+
+        public List<string> types = new List<string>();
+
+        private async Task<MqttMessage> ParseMQTTMessageToType(byte[] byteArray, string topic) {
+            var resString = Encoding.Default.GetString(byteArray);
+            Task<MqttMessage> res = Task.Factory.StartNew<MqttMessage>(() => {
+
+                dynamic s = JsonConvert.DeserializeObject(resString);
+                Newtonsoft.Json.Linq.JObject nestedObject = s.state.reported;
+                var nestedPath = nestedObject.First.Path;
+                //types.Add(nestedPath);
+
+                MqttMessage mqttres = null;
+
+                switch(nestedPath) {
+                    case "state.reported.svcEndpoints":
+                        mqttres = ToMqttMessage<Svcendpoints>("state.reported.svcEndpoints", nestedObject["svcEndpoints"]);
+                        break;
+                    case "state.reported.cloudEnv":
+                        mqttres = ToMqttMessage<CloudEnv>("state.reported.cloudEnv", nestedObject);
+                        break;
+                    case "state.reported.country":
+                        mqttres = ToMqttMessage<Country>("state.reported.country", nestedObject);
+                        break;
+                    case "state.reported.wifistat":
+                        mqttres = ToMqttMessage<Wifistat>("state.reported.wifistat", nestedObject["wifistat"]);
+                        break;
+                    case "state.reported.netinfo":
+                        mqttres = ToMqttMessage<Netinfo>("state.reported.netinfo", nestedObject["netinfo"]);
+                        break;
+                    case "state.reported.wlcfg":
+                        mqttres = ToMqttMessage<Wlcfg>("state.reported.wlcfg", nestedObject["wlcfg"]);
+                        break;
+                    case "state.reported.mac":
+                        mqttres = ToMqttMessage<Mac>("state.reported.mac", nestedObject);
+                        break;
+                    case "state.reported.localtimeoffset":
+                        mqttres = ToMqttMessage<LocalTimeOffset>("state.reported.localtimeoffset", nestedObject);
+                        break;
+                    case "state.reported.batPct":
+                        mqttres = ToMqttMessage<BatteryPercent>("state.reported.batPct", nestedObject);
+                        break;
+                    case "state.reported.cleanMissionStatus":
+                        mqttres = ToMqttMessage<CleanMissionStatusSuper>("state.reported.cleanMissionStatus", nestedObject);
+                        break;
+                    case "state.reported.vacHigh":
+                        mqttres = ToMqttMessage<VacHigh>("state.reported.vacHigh", nestedObject, new VacHighConverter());
+                        break;
+                    case "state.reported.bbnav":
+                        // This report returns a lot along with it,
+                        // They should probably be returned as seperate topics, but they get returned from the Roomba
+                        // all at once so...idk, I've just rolled them up for simplicity until I know what
+                        // exactly this refers to
+                        mqttres = ToMqttMessage<BbNavSuper>("state.reported.bbnav", nestedObject);
+                        break;
+                    case "state.reported.bbrstinfo":
+                        // Again, another rollup
+                        mqttres = ToMqttMessage<BbrstinfoSuper>("state.reported.bbrstinfo", nestedObject);
+                        break;
+                    case "state.reported.batteryType":
+                        mqttres = ToMqttMessage<BatteryType>("state.reported.batteryType", nestedObject);
+                        break;
+                    case "state.reported.tz":
+                        mqttres = ToMqttMessage<TzSuper>("state.reported.tz", nestedObject/*, new TzConverter()*/);
+                        break;
+                    case "state.reported.cleanSchedule":
+                        // Another rollup
+                        mqttres = ToMqttMessage<CleanScheduleSuper>("state.reported.cleanSchedule", nestedObject);
+                        break;
+                    case "state.reported.bbchg":
+                        // Another rollup
+                        mqttres = ToMqttMessage<BbchgSuper>("state.reported.bbchg", nestedObject);
+                        break;
+                    case "state.reported.bbrun":
+                        mqttres = ToMqttMessage<BbrunSuper>("state.reported.bbrun", nestedObject);
+                        break;
+                    case "state.reported.signal":
+                        mqttres = ToMqttMessage<Signal>("state.reported.signal", nestedObject["signal"]);
+                        break;
+                    case "state.reported.mapUploadAllowed":
+                        mqttres = ToMqttMessage<MapUploadAllowed>("state.reported.mapUploadAllowed", nestedObject);
+                        break;
+                    default:
+                        Console.WriteLine($"Unseen path type: {nestedPath}");
+                        break;
+                }
+
+                //Console.WriteLine();
+                return mqttres;
+            });
+            return await res;
+        }
+
+        private MqttMessage ToMqttMessage<T>(string Topic, JObject payload) {
+            return new MqttMessage {
+                Topic = Topic,
+                Type = typeof(T),
+                Raw = payload.ToString(Formatting.None),
+                Payload = payload.ToObject<T>()
+            };
+        }
+
+        private MqttMessage ToMqttMessage<T>(string Topic, JToken payload) {
+            return new MqttMessage {
+                Topic = Topic,
+                Type = typeof(T),
+                Raw = payload.ToString(Formatting.None),
+                Payload = payload.ToObject<T>()
+            };
+        }
+
+        /// <summary>
+        /// Uses a custom deserialization class to take over for edge cases where the default will fail.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="Topic"></param>
+        /// <param name="payload"></param>
+        /// <param name="customDeserialiser"></param>
+        /// <returns></returns>
+        private MqttMessage ToMqttMessage<T>(string Topic, JObject payload, JsonConverter customDeserialiser) {
+            JsonSerializerSettings settings = new JsonSerializerSettings {
+                TypeNameHandling = TypeNameHandling.Objects,
+
+            };
+            settings.Converters.Add(customDeserialiser);
+            return new MqttMessage {
+                Topic = Topic,
+                Type = typeof(T),
+                Raw = payload.ToString(Formatting.None),
+                Payload = JsonConvert.DeserializeObject<T>(payload.ToString(), settings)
+            };
+        }
+
 
         // Ignore all cert errors
         public static bool ValidateServerCertificate(
@@ -164,13 +302,63 @@ namespace Nulah.Roomba {
                         [3]	204	byte // message        0xcc
                         [4]	59	byte // message        0x3b
                         [5]	41	byte // message        0x29
-		                [4]	3	byte // error byte?    0x03  - not sure how this maps yet
+                        [4]	3	byte // error byte?    0x03  - not sure how this maps yet
                      */
                     throw new Exception("Failed to retrieve password. Did you hold the home button until it beeped?");
                 }
             }
 
             return resString;
+        }
+
+        public async Task ConnectToRoombaViaMQTT(RoombaDetails roombaDetails) {
+            var opts = new MqttClientOptions {
+                ClientId = roombaDetails?.Username ?? "3144460891021710",
+                ChannelOptions = new MqttClientTcpOptions {
+                    Port = 8883,/*
+                    TlsOptions = new MqttClientTlsOptions {
+                        AllowUntrustedCertificates = true
+                    },*/
+                    TlsOptions = new MqttClientTlsOptions {
+                        AllowUntrustedCertificates = true,
+                        IgnoreCertificateChainErrors = true,
+                        IgnoreCertificateRevocationErrors = true,
+                        UseTls = true
+                    },
+                    Server = roombaDetails?.LocalIp.ToString() ?? "192.168.1.101"
+                },
+                Credentials = new MqttClientCredentials {
+                    Username = roombaDetails?.Username ?? "3144460891021710",
+                    Password = roombaDetails?.Password ?? ":1:1525667008:MJTo5KUdxVHInkWp"
+                },
+                CleanSession = false
+            };
+            var factory = new MqttFactory();
+
+            var client = factory.CreateMqttClient();
+            client.Connected += async (s, e) => {
+                Console.WriteLine("Connected to Roomba");
+                //await client.SubscribeAsync(new TopicFilterBuilder().WithTopic("#").Build());
+            };
+
+            client.ApplicationMessageReceived += async (s, e) => {
+                var resMessage = await ParseMQTTMessageToType(e.ApplicationMessage.Payload, e.ApplicationMessage.Topic);
+                if(resMessage != null) {
+                    Console.WriteLine($"Received message with topic {e.ApplicationMessage.Topic}: {resMessage.Raw}");
+                } else {
+                    Console.WriteLine($"Received message with topic {e.ApplicationMessage.Topic}: {{topic was not handled}}");
+                }
+            };
+
+            try {
+                await client.ConnectAsync(opts);
+            } catch(Exception e) {
+                Console.WriteLine("### CONNECTING FAILED ###" + Environment.NewLine + e);
+            }
+        }
+
+        private void adsf(object sender, MqttApplicationMessageReceivedEventArgs e) {
+            throw new NotImplementedException();
         }
     }
 }
