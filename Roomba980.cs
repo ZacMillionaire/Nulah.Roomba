@@ -37,6 +37,24 @@ namespace Nulah.Roomba {
             };
         }
 
+        public class RoombaReceivedMessageEvent : EventArgs {
+            //public RoombaReceivedMessageEvent(MqttMessage m) {
+            //    message = m;
+            //}
+            //private MqttMessage message;
+
+            //public MqttMessage Message
+            //{
+            //    get { return message; }
+            //    set { message = value; }
+            //}
+            public MqttMessage Message { get; set; }
+        }
+
+        public delegate void OnReceivedMessage(object sender, RoombaReceivedMessageEvent e);
+
+        public event OnReceivedMessage OnMessage;
+
         /// <summary>
         /// Returns public information about the Roomba, including configuration settings.
         /// <para>
@@ -148,6 +166,17 @@ namespace Nulah.Roomba {
                         break;
                     case "state.reported.mapUploadAllowed":
                         mqttres = ToMqttMessage<MapUploadAllowed>("state.reported.mapUploadAllowed", nestedObject);
+                        break;
+                    case "state.reported.pose":
+                        mqttres = ToMqttMessage<Pose>("state.reported.pose", nestedObject);
+                        break;
+                    case "state.reported.audio":
+                        break;
+                    case "state.reported.lastCommand":
+                        break;
+                    case "state.reported.dock":
+                        break;
+                    case "state.reported.bbsys":
                         break;
                     default:
                         Console.WriteLine($"Unseen path type: {nestedPath}");
@@ -311,6 +340,8 @@ namespace Nulah.Roomba {
             return resString;
         }
 
+        private IMqttClient client;
+
         public async Task ConnectToRoombaViaMQTT(RoombaDetails roombaDetails) {
             var opts = new MqttClientOptions {
                 ClientId = roombaDetails?.Username ?? "3144460891021710",
@@ -331,22 +362,39 @@ namespace Nulah.Roomba {
                     Username = roombaDetails?.Username ?? "3144460891021710",
                     Password = roombaDetails?.Password ?? ":1:1525667008:MJTo5KUdxVHInkWp"
                 },
-                CleanSession = false
+                CleanSession = false,
+                ProtocolVersion = MQTTnet.Serializer.MqttProtocolVersion.V311
             };
             var factory = new MqttFactory();
 
-            var client = factory.CreateMqttClient();
+            client = factory.CreateMqttClient();
             client.Connected += async (s, e) => {
+                OnMessage(this, new RoombaReceivedMessageEvent {
+                    Message = new MqttMessage {
+                        Payload = "Connected",
+                        Raw = "Connected",
+                        Type = typeof(string),
+                        Topic = "event.roomba.connected"
+                    }
+                });
                 Console.WriteLine("Connected to Roomba");
                 //await client.SubscribeAsync(new TopicFilterBuilder().WithTopic("#").Build());
+            };
+
+            client.Disconnected += (s, e) => {
+                throw new Exception("discconected");
             };
 
             client.ApplicationMessageReceived += async (s, e) => {
                 var resMessage = await ParseMQTTMessageToType(e.ApplicationMessage.Payload, e.ApplicationMessage.Topic);
                 if(resMessage != null) {
-                    Console.WriteLine($"Received message with topic {e.ApplicationMessage.Topic}: {resMessage.Raw}");
+                    OnMessage(this, new RoombaReceivedMessageEvent {
+                        Message = resMessage
+                    });
+                    //Console.WriteLine($"Received message with topic {e.ApplicationMessage.Topic}: {resMessage.Raw}");
                 } else {
                     Console.WriteLine($"Received message with topic {e.ApplicationMessage.Topic}: {{topic was not handled}}");
+                    //throw new Exception($"Received message with topic {e.ApplicationMessage.Topic}: {{topic was not handled}}");
                 }
             };
 
@@ -357,8 +405,49 @@ namespace Nulah.Roomba {
             }
         }
 
-        private void adsf(object sender, MqttApplicationMessageReceivedEventArgs e) {
-            throw new NotImplementedException();
+        public async Task SendCommand(string commandString) {
+            /*
+            var cmd = new {
+                command = new {
+                    state = commandString
+                },
+                time = DateTime.Now.ToFileTimeUtc(),
+                initiator = "localApp"
+            };
+            var cmdString = JsonConvert.SerializeObject(cmd);
+            */
+            /*
+             
+start: () => _apiCall('cmd', 'start'),
+ function _apiCall (topic, command) {
+    return new Promise((resolve, reject) => {
+      let cmd = {command: command, time: Date.now() / 1000 | 0, initiator: 'localApp'};
+      if (topic === 'delta') {
+        cmd = {'state': command};
+      }
+      client.publish(topic, JSON.stringify(cmd), function (e) {
+        if (e) return reject(e);
+        resolve({ok: null}); // for retro compatibility
+      });
+    });
+}
+
+            {
+                "command" : "start",
+                time :
+            }
+             */
+            DateTime foo = DateTime.UtcNow;
+            long unixTime = ( (DateTimeOffset)foo ).ToUnixTimeSeconds();
+            var applicationMessage = new MqttApplicationMessageBuilder()
+                       .WithTopic("cmd")
+                       .WithPayload($@"{{""command"":""{commandString}"",""time"":{unixTime},""initiator"":""localApp""}}")
+                        .Build();
+            try {
+                await client.PublishAsync(applicationMessage);
+            } catch(Exception e) {
+                throw e;
+            }
         }
     }
 }
