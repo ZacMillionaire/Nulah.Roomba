@@ -23,7 +23,7 @@ namespace Nulah.Roomba.Models {
         public Netinfo netinfo { get; set; }
         public Wlcfg wlcfg { get; set; }
         public Mac mac { get; set; }
-        public Svcendpoints svcEndpoints { get; set; }
+        public SvcEndpoints svcEndpoints { get; set; }
         public MapUploadAllowed mapUploadAllowed { get; set; }
         public Country country { get; set; }
         public LocalTimeOffset localtimeoffset { get; set; }
@@ -255,7 +255,7 @@ namespace Nulah.Roomba.Models {
         public string ssid { get; set; }
     }
 
-    public class Svcendpoints {
+    public class SvcEndpoints {
         public string svcDeplId { get; set; }
     }
 

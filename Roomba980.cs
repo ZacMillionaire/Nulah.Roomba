@@ -5,6 +5,7 @@ using Newtonsoft.Json.Linq;
 using Nulah.Roomba.Models;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Security;
@@ -17,6 +18,10 @@ using System.Threading.Tasks;
 namespace Nulah.Roomba {
     // Most of this code is roughly ported from GetRoombaPassword in https://github.com/koalazak/dorita980
     public class Roomba980 {
+
+        public Roomba980() {
+            logFileName = $"Nulah.RoombaLogFile-{DateTime.UtcNow.ToString("s").Replace(":", "_") }.log";
+        }
 
         /// <summary>
         /// Returns the details of the Roomba at the specified IPAddress on the network.
@@ -37,17 +42,10 @@ namespace Nulah.Roomba {
             };
         }
 
-        public class RoombaReceivedMessageEvent : EventArgs {
-            //public RoombaReceivedMessageEvent(MqttMessage m) {
-            //    message = m;
-            //}
-            //private MqttMessage message;
+        private string logFileName;
+        public string LogFileLocation = "./";
 
-            //public MqttMessage Message
-            //{
-            //    get { return message; }
-            //    set { message = value; }
-            //}
+        public class RoombaReceivedMessageEvent : EventArgs {
             public MqttMessage Message { get; set; }
         }
 
@@ -87,6 +85,7 @@ namespace Nulah.Roomba {
         }
 
         public List<string> types = new List<string>();
+        public List<string> Messages = new List<string>();
 
         private async Task<MqttMessage> ParseMQTTMessageToType(byte[] byteArray, string topic) {
             var resString = Encoding.Default.GetString(byteArray);
@@ -94,11 +93,47 @@ namespace Nulah.Roomba {
 
                 dynamic s = JsonConvert.DeserializeObject(resString);
                 Newtonsoft.Json.Linq.JObject nestedObject = s.state.reported;
+                var nestedTopics = nestedObject.Children()
+                    .Select(x => new {
+                        Value = (JProperty)x,
+                        Key = ( (JProperty)x ).Name,
+                        Path = ( (JProperty)x ).Path,
+                        ObjectNested = ( x.Children().Count() == 1 && x.First.Children().Count() > 0 ),
+                        Type = Type.GetType($"Nulah.Roomba.Models.Responses.{( (JProperty)x ).Name}", false, true)
+                    });
+
+                var messageGroup = string.Join(",", nestedTopics.Select(x => x.Key));
+                Messages.Add(messageGroup);
+
+                Task.Run(async () => {
+                    DateTime foo = DateTime.UtcNow;
+                    long unixTime = ( (DateTimeOffset)foo ).ToUnixTimeSeconds();
+                    var logMessage = $"{unixTime}\t{messageGroup}\t{resString}{Environment.NewLine}";
+
+                    using(var ss = File.Open(Path.Combine(LogFileLocation, logFileName), FileMode.OpenOrCreate)) {
+                        byte[] logBytes = Encoding.UTF8.GetBytes(logMessage);
+                        ss.Seek(0, SeekOrigin.End);
+                        await ss.WriteAsync(logBytes, 0, logBytes.Length);
+                    }
+                });
+
+                // Add to MqttMessage and figure out a way to bundle all the messages with it
+                DateTime eventTime = DateTime.UtcNow;
+
+                var parsedTopics = nestedTopics.Select(x => new {
+                    Key = x.Key,
+                    Path = ( x.ObjectNested ) ? x.Value.First.ToString(Formatting.None) : x.Value.Parent.ToString(Formatting.None),
+                    obj = ( x.ObjectNested )
+                        ? JsonConvert.DeserializeObject(x.Value.First.ToString(Formatting.None), x.Type)
+                        : JsonConvert.DeserializeObject(x.Value.Parent.ToString(Formatting.None), x.Type)
+                });
+
                 var nestedPath = nestedObject.First.Path;
                 //types.Add(nestedPath);
+                //var safdg = JsonConvert.DeserializeObject<Mac>(@"{""mac"": ""f0:03:8c:fc:53:10""}");
 
                 MqttMessage mqttres = null;
-
+                /*
                 switch(nestedPath) {
                     case "state.reported.svcEndpoints":
                         mqttres = ToMqttMessage<Svcendpoints>("state.reported.svcEndpoints", nestedObject["svcEndpoints"]);
@@ -148,7 +183,7 @@ namespace Nulah.Roomba {
                         mqttres = ToMqttMessage<BatteryType>("state.reported.batteryType", nestedObject);
                         break;
                     case "state.reported.tz":
-                        mqttres = ToMqttMessage<TzSuper>("state.reported.tz", nestedObject/*, new TzConverter()*/);
+                        mqttres = ToMqttMessage<TzSuper>("state.reported.tz", nestedObject);
                         break;
                     case "state.reported.cleanSchedule":
                         // Another rollup
@@ -182,7 +217,7 @@ namespace Nulah.Roomba {
                         Console.WriteLine($"Unseen path type: {nestedPath}");
                         break;
                 }
-
+                */
                 //Console.WriteLine();
                 return mqttres;
             });
@@ -417,20 +452,20 @@ namespace Nulah.Roomba {
             var cmdString = JsonConvert.SerializeObject(cmd);
             */
             /*
-             
-start: () => _apiCall('cmd', 'start'),
- function _apiCall (topic, command) {
-    return new Promise((resolve, reject) => {
-      let cmd = {command: command, time: Date.now() / 1000 | 0, initiator: 'localApp'};
-      if (topic === 'delta') {
+
+        start: () => _apiCall('cmd', 'start'),
+        function _apiCall (topic, command) {
+        return new Promise((resolve, reject) => {
+        let cmd = {command: command, time: Date.now() / 1000 | 0, initiator: 'localApp'};
+        if (topic === 'delta') {
         cmd = {'state': command};
-      }
-      client.publish(topic, JSON.stringify(cmd), function (e) {
+        }
+        client.publish(topic, JSON.stringify(cmd), function (e) {
         if (e) return reject(e);
         resolve({ok: null}); // for retro compatibility
-      });
-    });
-}
+        });
+        });
+        }
 
             {
                 "command" : "start",
