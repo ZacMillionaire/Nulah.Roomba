@@ -1,6 +1,8 @@
 ﻿using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace Nulah.Roomba.Models.Responses {
@@ -49,6 +51,10 @@ namespace Nulah.Roomba.Models.Responses {
     public class Pose {
         public int theta { get; set; }
         public Point point { get; set; }
+    }
+    public class Point {
+        public int x { get; set; }
+        public int y { get; set; }
     }
     public class BatPct {
         public int batPct { get; set; }
@@ -187,19 +193,31 @@ namespace Nulah.Roomba.Models.Responses {
     public class SchedHold {
         public bool schedHold { get; set; }
     }
+
     public class Langs {
-        public int enUK { get; set; }
-        public int zhTW { get; set; }
-        public int zhHK { get; set; }
+        public Langs() { }
+        public Langs(Dictionary<string, int> langs) {
+            items = langs;
+        }
+        public Dictionary<string, int> items { get; set; }
     }
 
+    // Fuck this response, god damn an array of who the fuck cares I ain't making a class for every "en-UK" or "zh-HK" or the billions of others that will exist
     public class LangsConverter : JsonConverter {
         public override bool CanConvert(Type objectType) {
-            throw new NotImplementedException();
+            return typeof(Langs).IsAssignableFrom(objectType);
         }
 
         public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer) {
-            throw new NotImplementedException();
+            JObject obj = JObject.Load(reader);
+            var langs = obj.First.First.Children()
+                .Select(x => new {
+                    key = ( (JProperty)x.First ).Name,
+                    value = ( (JProperty)x.First ).Value.Value<int>()
+                })
+                .ToDictionary(x => x.key, x => x.value);
+
+            return new Langs(langs);
         }
 
         public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer) {
