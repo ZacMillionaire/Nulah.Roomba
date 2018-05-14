@@ -39,8 +39,6 @@ namespace Nulah.Roomba.Models.Responses {
     }
     public class LocalTimeOffset {
         public int localtimeoffset { get; set; }
-        public int utctime { get; set; }
-        public Pose pose { get; set; }
     }
     public class MapUploadAllowed {
         public bool mapUploadAllowed { get; set; }

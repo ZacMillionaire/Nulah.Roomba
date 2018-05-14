@@ -2,7 +2,9 @@
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 
 namespace Nulah.Roomba.Models {
@@ -16,5 +18,6 @@ namespace Nulah.Roomba.Models {
         public Type Type { get; set; }
         public object Payload { get; set; }
         public string Raw { get; set; }
+        public DateTime TimeStamp { get; set; }
     }
 }

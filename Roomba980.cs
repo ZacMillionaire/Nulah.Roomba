@@ -166,7 +166,8 @@ namespace Nulah.Roomba {
                             Topic = "state.reported.pose",
                             Type = typeof(Pose),
                             Raw = x.Value,
-                            Payload = JsonConvert.DeserializeObject<Pose>($"{x.Value}")
+                            Payload = JsonConvert.DeserializeObject<Pose>($"{x.Value}"),
+                            TimeStamp = foo
                         });
                 } else {
                     ms = nestedTopics.Select(x => {
@@ -181,7 +182,8 @@ namespace Nulah.Roomba {
                                 Topic = $"state.reported.langs",
                                 Raw = $"{{{x.Value.ToString()}}}",
                                 Type = typeof(Langs),
-                                Payload = JsonConvert.DeserializeObject($"{{{x.Value.ToString()}}}", typeof(Langs), settings)
+                                Payload = JsonConvert.DeserializeObject($"{{{x.Value.ToString()}}}", typeof(Langs), settings),
+                                TimeStamp = foo
                             };
                         }
 
@@ -191,7 +193,8 @@ namespace Nulah.Roomba {
                             Raw = ( x.ObjectNested ) ? x.Value.First.ToString(Formatting.None) : x.Value.ToString(Formatting.None),
                             Payload = ( x.ObjectNested )
                                 ? JsonConvert.DeserializeObject(x.Value.First.ToString(Formatting.None), x.Type)
-                                : JsonConvert.DeserializeObject(x.Value.Parent.ToString(Formatting.None), x.Type)
+                                : JsonConvert.DeserializeObject(x.Value.Parent.ToString(Formatting.None), x.Type),
+                            TimeStamp = foo
                         };
                     });
                 }
