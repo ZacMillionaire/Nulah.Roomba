@@ -101,7 +101,7 @@ namespace Nulah.Roomba {
 
                 dynamic s = JsonConvert.DeserializeObject(resString);
 
-                Newtonsoft.Json.Linq.JObject nestedObject = s.state.reported;
+                JObject nestedObject = s.state.reported;
                 var nestedTopics = nestedObject.Children()
                     .Select(x => new {
                         Value = (JProperty)x,
@@ -111,12 +111,10 @@ namespace Nulah.Roomba {
                         Type = Type.GetType($"Nulah.Roomba.Models.Responses.{( (JProperty)x ).Name}", false, true)
                     });
 
-                var messageGroup = string.Join(",", nestedTopics.Select(x => x.Key));
-                Messages.Add(messageGroup);
+                var messageGroup = "[Grouped] " + string.Join(",", nestedTopics.Select(x => x.Key));
 
-                DateTime foo = DateTime.UtcNow;
-                long unixTime = ( (DateTimeOffset)foo ).ToUnixTimeSeconds();
-                string logMessage = $"{unixTime}\t{messageGroup}\t{resString}{Environment.NewLine}";
+                DateTime timestamp = StaticHelpers.GetUtcNow();
+                _logger.Append(resString, messageGroup);
 
                 var parsedTopicsForLog = nestedTopics.Select(x => {
 
@@ -140,15 +138,20 @@ namespace Nulah.Roomba {
                         : JsonConvert.DeserializeObject(x.Value.Parent.ToString(Formatting.None), x.Type)
                     };
                 });
+                /*
                 List<string> messagesToLog = new List<string>();
 
                 messagesToLog.Add(logMessage);
-
+                */
                 foreach(var ptfl in parsedTopicsForLog) {
+                    _logger.Append(ptfl.Path, ptfl.Topic);
+                    /*
                     logMessage = $"->\t{ptfl.Topic}\t{ptfl.Path}{Environment.NewLine}";
                     messagesToLog.Add(logMessage);
+                    */
                 }
 
+                /*
                 byte[] logBytes = Encoding.UTF8.GetBytes(string.Join("", messagesToLog));
 
                 Task.Run(async () => {
@@ -157,6 +160,7 @@ namespace Nulah.Roomba {
                         await ss.WriteAsync(logBytes, 0, logBytes.Length);
                     }
                 });
+                */
 
                 // Add to MqttMessage and figure out a way to bundle all the messages with it
                 DateTime eventTime = DateTime.UtcNow;
@@ -171,7 +175,7 @@ namespace Nulah.Roomba {
                             Type = typeof(Pose),
                             Raw = x.Value,
                             Payload = JsonConvert.DeserializeObject<Pose>($"{x.Value}"),
-                            TimeStamp = foo
+                            TimeStamp = timestamp
                         });
                 } else {
                     ms = nestedTopics.Select(x => {
@@ -187,7 +191,7 @@ namespace Nulah.Roomba {
                                 Raw = $"{{{x.Value.ToString()}}}",
                                 Type = typeof(Langs),
                                 Payload = JsonConvert.DeserializeObject($"{{{x.Value.ToString()}}}", typeof(Langs), settings),
-                                TimeStamp = foo
+                                TimeStamp = timestamp
                             };
                         }
 
@@ -198,7 +202,7 @@ namespace Nulah.Roomba {
                             Payload = ( x.ObjectNested )
                                 ? JsonConvert.DeserializeObject(x.Value.First.ToString(Formatting.None), x.Type)
                                 : JsonConvert.DeserializeObject(x.Value.Parent.ToString(Formatting.None), x.Type),
-                            TimeStamp = foo
+                            TimeStamp = timestamp
                         };
                     });
                 }
