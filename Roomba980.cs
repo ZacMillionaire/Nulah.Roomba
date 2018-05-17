@@ -22,8 +22,10 @@ namespace Nulah.Roomba {
     public class Roomba980 {
 
         private readonly string _poseRegex = @"({""theta"":[\d-]+,""point"":{[xy:\"",\d-]+}})";
+        private readonly Logger _logger;
 
         public Roomba980() {
+            _logger = new Logger();
             logFileName = $"Nulah.RoombaLogFile-{DateTime.UtcNow.ToString("s").Replace(":", "_") }.log";
         }
 
@@ -36,6 +38,8 @@ namespace Nulah.Roomba {
         /// <param name="RobotLocalIP"></param>
         /// <returns></returns>
         public RoombaDetails GetDetails(IPAddress RobotLocalIP) {
+
+
             var roombaDetails = GetRobotPublicInfo(RobotLocalIP);
             var roombaPassword = GetRoombaPassword(RobotLocalIP);
             return new RoombaDetails() {
